@@ -36,15 +36,22 @@ fn main() {
     let num_cols: u32 = 4096;
     let num_cols_usize = num_cols as usize;
 
+    // TILE_SIZE in the kernel is fixed at 256, matching threads_per_threadgroup below.
+    assert_eq!(
+        num_cols % 256,
+        0,
+        "numCols must be a multiple of TILE_SIZE (256) — no partial-tile handling yet"
+    );
+
     // ── 1. SETUP — once per program run ────────────────────────────
     let device = MTLCreateSystemDefaultDevice().expect("no Metal device");
-    let source = NSString::from_str(include_str!("gemv.metal"));
+    let source = NSString::from_str(include_str!("gemv_tiled.metal"));
     let library = device
         .newLibraryWithSource_options_error(&source, None)
         .expect("shader compile failed");
     let function = library
-        .newFunctionWithName(&NSString::from_str("gemv_naive"))
-        .expect("gemv_naive kernel not found in library");
+        .newFunctionWithName(&NSString::from_str("gemv_tiled"))
+        .expect("gemv_tiled kernel not found in library");
     let pipeline = device
         .newComputePipelineStateWithFunction_error(&function)
         .expect("pipeline creation failed");
@@ -70,8 +77,6 @@ fn main() {
         )
         .expect("y_buffer alloc failed");
 
-    // Both W and x come from the same real weight file — load once, keep the
-    // backing bytes alive as long as we need to read from them.
     let file_bytes = std::fs::read(&input_path)
         .unwrap_or_else(|e| panic!("failed to read input safetensors file {input_path}: {e}"));
     let tensors = SafeTensors::deserialize(&file_bytes).expect("failed to parse safetensors file");
@@ -89,9 +94,6 @@ fn main() {
         "x byte length mismatch — file shape doesn't match num_cols"
     );
 
-    // contents() returns NonNull<c_void> — .as_ptr() unwraps it to a plain raw pointer.
-    // Both copies below are the same pattern: raw tensor bytes straight into GPU-shared
-    // memory, no intermediate Vec<f32> on the Rust side for either W or x.
     unsafe {
         let w_ptr = w_buffer.contents().as_ptr() as *mut u8;
         let w_bytes = std::slice::from_raw_parts_mut(w_ptr, w_tensor.data().len());
@@ -134,8 +136,6 @@ fn main() {
     };
 
     // Warmup dispatch (excluded from timing) + repeated timed dispatches.
-    // Output is deterministic, so whichever dispatch's y_buffer we read from
-    // afterward is identical to every other — no separate "correctness" pass needed.
     let warmup_runs = 1;
     let timed_runs = 20;
     for _ in 0..warmup_runs {

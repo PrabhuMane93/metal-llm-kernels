@@ -330,6 +330,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiled_gemv"
+version = "0.1.0"
+dependencies = [
+ "objc2",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "objc2-metal",
+ "safetensors",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"

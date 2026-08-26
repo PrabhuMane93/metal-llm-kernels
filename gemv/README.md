@@ -10,25 +10,25 @@ GEMV is the most-executed operation in LLM decode — every layer, every token, 
 
 Run these from the **repo root** (`metal-llm-kernels/`), with the Python venv from the root README already created and activated, and `requirements.txt` already installed.
 
-**1. Generate the inputs.** `gen_weights.py` creates both `W` (4096×4096) and `x` (4096,) — seeded random values, saved together as one `gemv_inputs.safetensors` file (Hugging Face's safetensors format). This file is gitignored and regenerated on demand, not committed — the seed makes it reproducible.
-```bash
-python3 gemv/gen_weights.py
-```
-Expect: `wrote gemv_inputs.safetensors — W (4096, 4096) float32, x (4096,) float32`
+Input generation and correctness/performance verification live in the shared harness at [`../bench/`](../bench/), not in this crate — `bench/` is the single source of truth for both the generation logic and the NumPy reference, so there's no risk of it drifting out of sync with a second copy living here. The tradeoff: this kernel isn't standalone-runnable-and-verifiable in isolation anymore — even a one-off sanity check goes through `bench/`.
 
-**2. Build and run the Rust kernel.** Loads `gemv_inputs.safetensors`, copies `W` and `x` directly into GPU-shared Metal buffers (no intermediate `Vec<f32>` — the buffer's own memory is the only copy of the data that exists on the Rust side), dispatches the kernel, prints three sample outputs.
+**1. Generate the inputs** (once, or whenever they need regenerating):
 ```bash
-cargo run -p gemv
+python3 bench/generators.py
 ```
-Expect: three lines like `y[0] = -0.010970085`.
+Writes `bench/data/gemv_inputs.safetensors` — `W` (4096×4096) and `x` (4096,), seeded, reproducible. Shared with `../tiled_gemv/`, since both compute the same `y = W @ x`.
 
-**3. Verify against an independent reference.** `verify.py` loads the *same* `gemv_inputs.safetensors` file and computes `W @ x` with NumPy — same input bytes, independent implementation, independent language.
+**2. Run + verify, via the harness:**
 ```bash
-python3 gemv/verify.py
+python3 bench/run_bench.py
 ```
-Expect the same three `y[...]` values, matching to float32 tolerance (the last digit or two may differ — the kernel accumulates sequentially while NumPy uses a different reduction order internally; this is normal floating-point rounding, not a bug).
+Runs `gemv_naive` (this crate) and `gemv_tiled` against the NumPy reference, reporting max/mean/relative error and timing for each.
 
-**4. Compare performance (planned, not yet implemented).** A Rust-vs-NumPy timing comparator is planned as the next addition to this kernel — this section will be filled in once that script exists, rather than documenting something that isn't there yet.
+**3. Run just this binary directly**, without the harness, if you only want the kernel's own output:
+```bash
+cargo run -p gemv --release -- --input bench/data/gemv_inputs.safetensors --output bench/data/gemv_naive_output.safetensors
+```
+Prints three sample `y[...]` values and a `TIMING_MS:` line (average over 20 dispatches, 1 warmup excluded). The full result is written to `--output` as a `.safetensors` file, not printed — comparing it against a reference is `bench/compare.py`'s job now, invoked through `run_bench.py`.
 
 ## Known simplifications
 

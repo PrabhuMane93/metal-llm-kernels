@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["gemv"]
+members = ["gemv", "tiled_gemv"]
 
 [workspace.dependencies]
 objc2 = "0.6.4"
