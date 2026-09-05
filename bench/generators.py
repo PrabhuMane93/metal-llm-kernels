@@ -29,10 +29,32 @@ def generate_gemv_inputs() -> Path:
     return out_path
 
 
+def generate_gemm_inputs() -> Path:
+    """W (4096, 4096) and x_matrix (128, 4096) — GEMM's batched generalization
+    of GEMV's y = W @ x: Y = x_matrix @ W.T, one row of x_matrix per token
+    (prefill's stacked hidden states), all rows computed in a single dispatch
+    instead of one token at a time. seq_len=128 is a representative short
+    prompt length, not a hard constraint of the kernel."""
+    num_rows, num_cols = 4096, 4096
+    seq_len = 128
+    rng = np.random.default_rng(seed=43)
+    W = rng.standard_normal((num_rows, num_cols), dtype=np.float32) * 0.02
+    x_matrix = rng.standard_normal((seq_len, num_cols), dtype=np.float32) * 0.02
+
+    out_path = DATA_DIR / "gemm_inputs.safetensors"
+    save_file({"W": W, "x_matrix": x_matrix}, out_path)
+    print(
+        f"wrote {out_path.name} — W {W.shape} {W.dtype}, "
+        f"x_matrix {x_matrix.shape} {x_matrix.dtype}"
+    )
+    return out_path
+
+
 # One entry per distinct input shape/family — not one per kernel binary.
 # gemv_naive and gemv_tiled both consume "gemv_inputs", for example.
 GENERATORS = {
     "gemv_inputs": generate_gemv_inputs,
+    "gemm_inputs": generate_gemm_inputs,
 }
 
 

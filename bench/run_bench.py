@@ -29,7 +29,10 @@ TIMING_RE = re.compile(r"TIMING_MS:\s*([\d.]+)")
 
 # One entry per kernel *binary* — gemv_naive and gemv_tiled are two entries
 # even though they share the same input file, since they're separate crates
-# with separate outputs to compare against the same reference.
+# with separate outputs to compare against the same reference. "bin" is only
+# needed for crates with more than one binary (fused-gemv-gemm has gemv AND
+# gemm as separate src/bin/*.rs, so `cargo run -p fused-gemv-gemm` alone is
+# ambiguous without it). "output_tensor" defaults to "y"; GEMM writes "Y".
 OPERATIONS = [
     {
         "name": "gemv_naive",
@@ -46,6 +49,25 @@ OPERATIONS = [
         "output_file": "gemv_tiled_output.safetensors",
         "reference_op": "gemv",
         "reference_inputs": ("W", "x"),
+    },
+    {
+        "name": "gemv_q4_fused",
+        "crate": "fused-gemv-gemm",
+        "bin": "gemv",
+        "input_file": "gemv_inputs.safetensors",
+        "output_file": "gemv_q4_fused_output.safetensors",
+        "reference_op": "gemv_q4",
+        "reference_inputs": ("W", "x"),
+    },
+    {
+        "name": "gemm_q4_fused",
+        "crate": "fused-gemv-gemm",
+        "bin": "gemm",
+        "input_file": "gemm_inputs.safetensors",
+        "output_file": "gemm_q4_fused_output.safetensors",
+        "output_tensor": "Y",
+        "reference_op": "gemm_q4",
+        "reference_inputs": ("W", "x_matrix"),
     },
 ]
 
@@ -66,12 +88,13 @@ def run_operation(op: dict) -> bool:
     expected = REFERENCE_OPS[op["reference_op"]](*ref_args)
     ref_ms = (time.perf_counter() - ref_start) * 1000
 
+    cmd = ["cargo", "run", "-p", op["crate"]]
+    if "bin" in op:
+        cmd += ["--bin", op["bin"]]
+    cmd += ["--release", "--", "--input", str(input_path), "--output", str(output_path)]
+
     result = subprocess.run(
-        [
-            "cargo", "run", "-p", op["crate"], "--release", "--",
-            "--input", str(input_path),
-            "--output", str(output_path),
-        ],
+        cmd,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -86,7 +109,7 @@ def run_operation(op: dict) -> bool:
     rust_ms = float(match.group(1)) if match else float("nan")
 
     outputs = load_file(output_path)
-    actual = outputs["y"]
+    actual = outputs[op.get("output_tensor", "y")]
 
     report = diff_report(actual, expected)
     tolerance = 1e-3
