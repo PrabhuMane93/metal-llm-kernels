@@ -54,7 +54,7 @@ fn main() {
     // Same quantize_q4/write_base_file as GEMV 3 — Q4 packing doesn't
     // care whether the packed W ends up feeding a GEMV or a GEMM kernel.
     let base_path = input_path.replace(".safetensors", "_q4.base");
-    quantize_safetensors_to_base(&input_path, &base_path, num_rows, num_cols);
+    quantize_safetensors_to_base(&input_path, &base_path, num_rows, num_cols, "W");
 
     // ── 1. SETUP — once per program run ────────────────────────────
     let device = MTLCreateSystemDefaultDevice().expect("no Metal device");

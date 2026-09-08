@@ -69,6 +69,15 @@ OPERATIONS = [
         "reference_op": "gemm_q4",
         "reference_inputs": ("W", "x_matrix"),
     },
+    {
+        "name": "gemv_silu_fused",
+        "crate": "fused-silu",
+        "input_file": "silu_inputs.safetensors",
+        "output_file": "silu_fused_output.safetensors",
+        "output_tensor": "h",
+        "reference_op": "swiglu_q4",
+        "reference_inputs": ("W_gate", "W_up", "x"),
+    },
 ]
 
 

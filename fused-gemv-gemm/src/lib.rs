@@ -98,18 +98,28 @@ fn f32_vec_from_le_bytes(bytes: &[u8]) -> Vec<f32> {
         .collect()
 }
 
-/// Load the true FP32 `W` tensor out of a safetensors file, as a flat
-/// row-major `Vec<f32>` of length `num_rows * num_cols`.
-pub fn load_fp32_w(input_path: &str, num_rows: usize, num_cols: usize) -> Vec<f32> {
+/// Load a named FP32 weight tensor out of a safetensors file, as a flat
+/// row-major `Vec<f32>` of length `num_rows * num_cols`. `tensor_name` is
+/// parameterized (rather than hardcoded to "W") since a single input file
+/// can hold more than one weight matrix — e.g. `silu_inputs.safetensors`
+/// holds both `W_gate` and `W_up`.
+pub fn load_fp32_w(
+    input_path: &str,
+    num_rows: usize,
+    num_cols: usize,
+    tensor_name: &str,
+) -> Vec<f32> {
     let file_bytes =
         fs::read(input_path).unwrap_or_else(|e| panic!("failed to read {input_path}: {e}"));
     let tensors =
         SafeTensors::deserialize(&file_bytes).expect("failed to parse safetensors file");
-    let w_tensor = tensors.tensor("W").expect("tensor \"W\" not found in input file");
+    let w_tensor = tensors
+        .tensor(tensor_name)
+        .unwrap_or_else(|_| panic!("tensor \"{tensor_name}\" not found in input file"));
     assert_eq!(
         w_tensor.data().len(),
         num_rows * num_cols * 4,
-        "W byte length mismatch — expected a {num_rows}x{num_cols} f32 matrix"
+        "{tensor_name} byte length mismatch — expected a {num_rows}x{num_cols} f32 matrix"
     );
     f32_vec_from_le_bytes(w_tensor.data())
 }
@@ -120,7 +130,13 @@ pub fn load_fp32_w(input_path: &str, num_rows: usize, num_cols: usize) -> Vec<f3
 /// the 64 KiB zero-copy padding — this project's loader does an explicit
 /// read+copy, not mmap, so the page-alignment precondition for
 /// `MTLBuffer.makeBufferWithBytesNoCopy` buys nothing yet.
-pub fn write_base_file(output_path: &str, q: &Quantized, num_rows: usize, num_cols: usize) {
+pub fn write_base_file(
+    output_path: &str,
+    q: &Quantized,
+    num_rows: usize,
+    num_cols: usize,
+    tensor_name: &str,
+) {
     let mut packed_bytes = Vec::with_capacity(q.packed_words.len() * 4);
     for w in &q.packed_words {
         packed_bytes.extend_from_slice(&w.to_le_bytes());
@@ -148,7 +164,7 @@ pub fn write_base_file(output_path: &str, q: &Quantized, num_rows: usize, num_co
         "schema": 1,
         "tensors": [
             {
-                "name": "W",
+                "name": tensor_name,
                 "dtype": "base_q4",
                 "shape": [num_rows, num_cols],
                 "offset": offset,
@@ -187,11 +203,12 @@ pub fn quantize_safetensors_to_base(
     output_path: &str,
     num_rows: usize,
     num_cols: usize,
+    tensor_name: &str,
 ) {
-    let w_data = load_fp32_w(input_path, num_rows, num_cols);
+    let w_data = load_fp32_w(input_path, num_rows, num_cols, tensor_name);
     // 4096 (row length) is a multiple of GROUP_SIZE (64), so blocks never
     // straddle a row boundary — quantizing the flat array group-by-group
     // is already correct, no per-row loop needed.
     let q = quantize_q4(&w_data);
-    write_base_file(output_path, &q, num_rows, num_cols);
+    write_base_file(output_path, &q, num_rows, num_cols, tensor_name);
 }

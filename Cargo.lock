@@ -87,6 +87,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "fused-silu"
+version = "0.1.0"
+dependencies = [
+ "fused-gemv-gemm",
+ "half",
+ "objc2",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "objc2-metal",
+ "safetensors",
+ "serde_json",
+]
+
+[[package]]
 name = "gemv"
 version = "0.1.0"
 dependencies = [

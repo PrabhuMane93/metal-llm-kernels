@@ -8,6 +8,8 @@ an unfairly precise FP64 reference" instead of "kernel bug vs. no bug."
 """
 
 import numpy as np
+import torch
+import torch.nn.functional as F
 
 
 def gemv_reference(W: np.ndarray, x: np.ndarray) -> np.ndarray:
@@ -62,8 +64,53 @@ def gemm_q4_reference(W: np.ndarray, x_matrix: np.ndarray) -> np.ndarray:
     return Y
 
 
+def _swiglu_torch(W_gate: np.ndarray, W_up: np.ndarray, x: np.ndarray) -> np.ndarray:
+    """Shared core for both SwiGLU variants below. SiLU comes from PyTorch's
+    F.silu — a real, trusted implementation of z*sigmoid(z) — rather than a
+    hand-rolled sigmoid formula, same standard already applied to
+    _quantize_dequant_block64 (verified against real base-convert source
+    instead of assumed). torch.from_numpy is zero-copy for float32 arrays,
+    and torch matmul/F.silu don't silently upcast to float64 the way a
+    Python float literal can under NumPy — but the inputs must already be
+    float32 going in, checked explicitly since nothing here would catch a
+    float64 input by accident.
+    """
+    W_gate_t = torch.from_numpy(W_gate)
+    W_up_t = torch.from_numpy(W_up)
+    x_t = torch.from_numpy(x)
+    assert (
+        W_gate_t.dtype == torch.float32
+        and W_up_t.dtype == torch.float32
+        and x_t.dtype == torch.float32
+    ), "inputs must already be float32"
+
+    gate = W_gate_t @ x_t
+    up = W_up_t @ x_t
+    h = F.silu(gate) * up
+    assert h.dtype == torch.float32, "torch op silently promoted precision — check input dtypes"
+    return h.numpy()
+
+
+def swiglu_reference(W_gate: np.ndarray, W_up: np.ndarray, x: np.ndarray) -> np.ndarray:
+    assert (
+        W_gate.dtype == np.float32 and W_up.dtype == np.float32 and x.dtype == np.float32
+    ), "inputs must already be float32"
+    return _swiglu_torch(W_gate, W_up, x)
+
+
+def swiglu_q4_reference(W_gate: np.ndarray, W_up: np.ndarray, x: np.ndarray) -> np.ndarray:
+    assert (
+        W_gate.dtype == np.float32 and W_up.dtype == np.float32 and x.dtype == np.float32
+    ), "inputs must already be float32"
+    W_gate_dequant = _quantize_dequant_block64(W_gate)
+    W_up_dequant = _quantize_dequant_block64(W_up)
+    return _swiglu_torch(W_gate_dequant, W_up_dequant, x)
+
+
 REFERENCE_OPS = {
     "gemv": gemv_reference,
     "gemv_q4": gemv_q4_reference,
     "gemm_q4": gemm_q4_reference,
+    "swiglu": swiglu_reference,
+    "swiglu_q4": swiglu_q4_reference,
 }

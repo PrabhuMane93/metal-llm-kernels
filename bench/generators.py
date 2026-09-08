@@ -50,11 +50,32 @@ def generate_gemm_inputs() -> Path:
     return out_path
 
 
+def generate_silu_inputs() -> Path:
+    """W_gate (4096, 4096), W_up (4096, 4096), and x (4096,) — fused SiLU's
+    decode-shaped inputs: gate = W_gate @ x, up = W_up @ x, both GEMV-shaped
+    like gemv_inputs (single-token decode, not gemm_inputs' batched prefill),
+    matching this task's single-dispatch, two-accumulator design."""
+    num_rows, num_cols = 4096, 4096
+    rng = np.random.default_rng(seed=44)
+    W_gate = rng.standard_normal((num_rows, num_cols), dtype=np.float32) * 0.02
+    W_up = rng.standard_normal((num_rows, num_cols), dtype=np.float32) * 0.02
+    x = rng.standard_normal((num_cols,), dtype=np.float32) * 0.02
+
+    out_path = DATA_DIR / "silu_inputs.safetensors"
+    save_file({"W_gate": W_gate, "W_up": W_up, "x": x}, out_path)
+    print(
+        f"wrote {out_path.name} — W_gate {W_gate.shape} {W_gate.dtype}, "
+        f"W_up {W_up.shape} {W_up.dtype}, x {x.shape} {x.dtype}"
+    )
+    return out_path
+
+
 # One entry per distinct input shape/family — not one per kernel binary.
 # gemv_naive and gemv_tiled both consume "gemv_inputs", for example.
 GENERATORS = {
     "gemv_inputs": generate_gemv_inputs,
     "gemm_inputs": generate_gemm_inputs,
+    "silu_inputs": generate_silu_inputs,
 }
 
 
