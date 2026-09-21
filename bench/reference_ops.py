@@ -107,10 +107,35 @@ def swiglu_q4_reference(W_gate: np.ndarray, W_up: np.ndarray, x: np.ndarray) -> 
     return _swiglu_torch(W_gate_dequant, W_up_dequant, x)
 
 
+def attention_reference(Q: np.ndarray, K: np.ndarray, V: np.ndarray) -> np.ndarray:
+    """Single-head, non-causal scaled-dot-product attention — the exact
+    formula Rung A's three kernels (qk_scaled_matmul -> row_softmax ->
+    av_matmul) compute, via PyTorch's real F.scaled_dot_product_attention
+    (trusted, same "real library over hand-rolled formula" discipline as
+    F.silu for SwiGLU) rather than a hand-rolled softmax. Unsqueezed to
+    (1, seq_len, d_head) and back — defensive against SDPA's unbatched-
+    input support varying by torch version, not because these inputs are
+    conceptually batched. is_causal=False: Rung A doesn't mask yet, that's
+    Rung C, added once the tiled kernel (Rung B) is solid. SDPA's default
+    scale (1/sqrt(d_head), taken from the last dim) matches the kernel's
+    own scale exactly, so no explicit scale argument is needed.
+    """
+    assert (
+        Q.dtype == np.float32 and K.dtype == np.float32 and V.dtype == np.float32
+    ), "inputs must already be float32"
+    Q_t = torch.from_numpy(Q).unsqueeze(0)
+    K_t = torch.from_numpy(K).unsqueeze(0)
+    V_t = torch.from_numpy(V).unsqueeze(0)
+    O = F.scaled_dot_product_attention(Q_t, K_t, V_t, is_causal=False)
+    assert O.dtype == torch.float32, "torch op silently promoted precision — check input dtypes"
+    return O.squeeze(0).numpy()
+
+
 REFERENCE_OPS = {
     "gemv": gemv_reference,
     "gemv_q4": gemv_q4_reference,
     "gemm_q4": gemm_q4_reference,
     "swiglu": swiglu_reference,
     "swiglu_q4": swiglu_q4_reference,
+    "attention": attention_reference,
 }

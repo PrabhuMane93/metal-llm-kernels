@@ -70,12 +70,36 @@ def generate_silu_inputs() -> Path:
     return out_path
 
 
+def generate_attention_inputs() -> Path:
+    """Q, K, V each (seq_len, d_head) — single-head, non-causal attention's
+    inputs. d_head=128 matches Qwen3's real per-head dimension (confirmed
+    against base-arch/qwen.rs's num_key_value_heads/head_dim test fixtures,
+    not assumed); seq_len=128 matches gemm_inputs' representative prefill
+    length. Shared by attention_naive (Rung A) and, later, the tiled
+    online-softmax kernel (Rung B) — same relationship as gemv_inputs
+    being shared by gemv_naive and gemv_tiled."""
+    seq_len, d_head = 128, 128
+    rng = np.random.default_rng(seed=45)
+    Q = rng.standard_normal((seq_len, d_head), dtype=np.float32) * 0.02
+    K = rng.standard_normal((seq_len, d_head), dtype=np.float32) * 0.02
+    V = rng.standard_normal((seq_len, d_head), dtype=np.float32) * 0.02
+
+    out_path = DATA_DIR / "attention_inputs.safetensors"
+    save_file({"Q": Q, "K": K, "V": V}, out_path)
+    print(
+        f"wrote {out_path.name} — Q {Q.shape} {Q.dtype}, K {K.shape} {K.dtype}, "
+        f"V {V.shape} {V.dtype}"
+    )
+    return out_path
+
+
 # One entry per distinct input shape/family — not one per kernel binary.
 # gemv_naive and gemv_tiled both consume "gemv_inputs", for example.
 GENERATORS = {
     "gemv_inputs": generate_gemv_inputs,
     "gemm_inputs": generate_gemm_inputs,
     "silu_inputs": generate_silu_inputs,
+    "attention_inputs": generate_attention_inputs,
 }
 
 

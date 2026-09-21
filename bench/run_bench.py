@@ -78,6 +78,15 @@ OPERATIONS = [
         "reference_op": "swiglu_q4",
         "reference_inputs": ("W_gate", "W_up", "x"),
     },
+    {
+        "name": "attention_naive",
+        "crate": "naive-attention",
+        "input_file": "attention_inputs.safetensors",
+        "output_file": "attention_naive_output.safetensors",
+        "output_tensor": "O",
+        "reference_op": "attention",
+        "reference_inputs": ("Q", "K", "V"),
+    },
 ]
 
 
