@@ -68,6 +68,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
+name = "flash-attention"
+version = "0.1.0"
+dependencies = [
+ "objc2",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "objc2-metal",
+ "safetensors",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

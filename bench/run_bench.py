@@ -87,6 +87,15 @@ OPERATIONS = [
         "reference_op": "attention",
         "reference_inputs": ("Q", "K", "V"),
     },
+    {
+        "name": "attention_flash",
+        "crate": "flash-attention",
+        "input_file": "attention_inputs.safetensors",
+        "output_file": "attention_flash_output.safetensors",
+        "output_tensor": "O",
+        "reference_op": "attention",
+        "reference_inputs": ("Q", "K", "V"),
+    },
 ]
 
 
